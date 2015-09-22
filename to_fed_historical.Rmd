@@ -1,0 +1,45 @@
+---
+title: "History of federal elections in Toronto"
+author: "PsephoAnalytics"
+date: "September 21, 2015"
+output: html_document
+---
+
+# Historical patterns
+
+We start by looking at how votes per party have changed over time. Since the polling boundaries and locations change each year, we've standardized the geography of voting by aggregating poll boundaries into census tracts.
+
+```{r,echo=FALSE,message=FALSE}
+library(toVotes)
+ct_vote_plot <- function(geo_data, year) {
+  library(dplyr)
+  geo_data@data$id <- row.names(geo_data@data)
+  data <- geo_data@data %>%
+    tidyr::gather(party, votes, -id) %>%
+    dplyr::group_by(id, party, add = FALSE) %>%
+    dplyr::summarize(votes = sum(votes, na.rm = TRUE)) %>%
+    dplyr::mutate(prop_votes = votes/sum(votes)) %>%
+    dplyr::select(-votes)
+  geo_data@data <- dplyr::select(geo_data@data, id)
+  geo <- ggplot2::fortify(geo_data, region="id")
+  library(ggplot2)
+  ggplot(data, aes(map_id = id)) +
+    geom_map(aes(fill = cut_interval(prop_votes, length = 0.15)), map = geo) +
+    scale_fill_brewer("Proportion of votes", labels=c("Low", rep("", 4), "High"),
+                      type = "seq", palette = "YlOrBr") +
+    labs(x="", y="", title=paste0(year, " Federal General Election")) +
+    theme(axis.ticks.y = element_blank(), axis.text.y = element_blank(), # get rid of x ticks/text
+          axis.ticks.x = element_blank(), axis.text.x = element_blank(), # get rid of y ticks/text
+          plot.title = element_text(lineheight=.8, face="bold", vjust=1)) + # make title bold and add space +
+    expand_limits(x = geo$long, y = geo$lat) +
+    facet_wrap(~party, as.table = FALSE)
+}
+```
+
+```{r, echo=FALSE, cache=TRUE}
+ct_vote_plot(fed_votes_2006_geo, 2006)
+ct_vote_plot(fed_votes_2008_geo, 2008)
+ct_vote_plot(fed_votes_2011_geo, 2011)
+```
+
+One pattern that is consistent across all years is the relatively poor showing of any of the "Other" parties, even when considered in the aggregate. Across the years, we can see a remarkable decline in support for the Liberals in the 2011 election, after a relatively strong showing in the 2008 election. NDP support seems to grow from just the downtown in 2006 to a much wider distribution in 2011. Conservative support, conversely, seems to expand in the 2008 election (though not enough to win any seats), to more focused support in specific areas (winning them eight seats in total).
