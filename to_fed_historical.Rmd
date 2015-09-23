@@ -43,3 +43,42 @@ ct_vote_plot(fed_votes_2011_geo, 2011)
 ```
 
 One pattern that is consistent across all years is the relatively poor showing of any of the "Other" parties, even when considered in the aggregate. Across the years, we can see a remarkable decline in support for the Liberals in the 2011 election, after a relatively strong showing in the 2008 election. NDP support seems to grow from just the downtown in 2006 to a much wider distribution in 2011. Conservative support, conversely, seems to expand in the 2008 election (though not enough to win any seats), to more focused support in specific areas (winning them eight seats in total).
+
+We can take a more direct look at how party support changes over time by plotting the change in the proportion of votes received by each party between 2006 and 2011.
+
+```{r}
+library(toVotes)
+library(dplyr)
+fed_votes_2006_geo@data$id <- row.names(fed_votes_2006_geo@data)
+fed_votes_2008_geo@data$id <- row.names(fed_votes_2008_geo@data)
+fed_votes_2011_geo@data$id <- row.names(fed_votes_2011_geo@data)
+fed_votes_2006_geo@data$year <- 2006
+fed_votes_2008_geo@data$year <- 2008
+fed_votes_2011_geo@data$year <- 2011
+data <- dplyr::bind_rows(fed_votes_2006_geo@data, 
+                         fed_votes_2008_geo@data, 
+                         fed_votes_2011_geo@data) %>%
+  tidyr::gather(party, votes, Other, Conservative, Liberal, NDP) %>% 
+  dplyr::filter(year != 2008) %>% 
+  dplyr::group_by(year, id, party) %>%
+  dplyr::summarize(votes = sum(votes, na.rm = TRUE)) %>% 
+  dplyr::mutate(prop_votes = votes/sum(votes, na.rm = TRUE)) %>% 
+  dplyr::select(-votes) %>% 
+  dplyr::group_by(id, party) %>% 
+  dplyr::summarize(change_votes = diff(prop_votes))
+fed_votes_2011_geo@data <- dplyr::select(fed_votes_2011_geo@data, id)
+geo <- ggplot2::fortify(fed_votes_2011_geo, region="id")
+library(ggplot2)
+ggplot(data, aes(map_id = id)) +
+  geom_map(aes(fill = cut_interval(change_votes, n = 5)), map = geo) +
+  scale_fill_brewer("Change in the proportion", labels=c("Decrease", rep("", 3), "Increase"),
+                    type = "div", palette = "BrBG") +
+  labs(x="", y="", title= "Votes in the 2006 and 2011 Federal General Election") +
+  theme(axis.ticks.y = element_blank(), axis.text.y = element_blank(), # get rid of x ticks/text
+        axis.ticks.x = element_blank(), axis.text.x = element_blank(), # get rid of y ticks/text
+        plot.title = element_text(lineheight=.8, face="bold", vjust=1)) + # make title bold and add space
+  expand_limits(x = geo$long, y = geo$lat) +
+  facet_wrap(~party, as.table = FALSE)
+```
+
+Clearly, the story from 2006 to 2011 is a large, widespread drop in Liberal party support (with an average decline of `r round(abs(mean(filter(data, party == "Liberal", !is.nan(change_votes))$change_votes)),2)*100`% and maximum decline of `r round(abs(min(filter(data, party == "Liberal", !is.nan(change_votes))$change_votes)),2)*100`%). The benefits of this decline were roughly equally shared by the Conservative and NDP parties, but in different locations. The NDP seems to have particularly benefited from the Liberal's decline in the north east.
