@@ -9,7 +9,7 @@ output: html_document
 
 We start by looking at how votes per party have changed over time. Since the polling boundaries and locations change each year, we've standardized the geography of voting by aggregating poll boundaries into census tracts.
 
-```{r,echo=FALSE,message=FALSE}
+```{r,votes_by_year, echo=FALSE,message=FALSE}
 library(toVotes)
 ct_vote_plot <- function(geo_data, year) {
   library(dplyr)
@@ -46,7 +46,7 @@ One pattern that is consistent across all years is the relatively poor showing o
 
 We can take a more direct look at how party support changes over time by plotting the change in the proportion of votes received by each party between 2006 and 2011.
 
-```{r}
+```{r, change_in_votes, echo=FALSE}
 library(toVotes)
 library(dplyr)
 fed_votes_2006_geo@data$id <- row.names(fed_votes_2006_geo@data)
@@ -82,3 +82,58 @@ ggplot(data, aes(map_id = id)) +
 ```
 
 Clearly, the story from 2006 to 2011 is a large, widespread drop in Liberal party support (with an average decline of `r round(abs(mean(filter(data, party == "Liberal", !is.nan(change_votes))$change_votes)),2)*100`% and maximum decline of `r round(abs(min(filter(data, party == "Liberal", !is.nan(change_votes))$change_votes)),2)*100`%). The benefits of this decline were roughly equally shared by the Conservative and NDP parties, but in different locations. The NDP seems to have particularly benefited from the Liberal's decline in the north east.
+
+# Role of incumbents
+
+```{r, incumbents, echo=FALSE}
+library(toVotes)
+library(dplyr)
+# Extract a list of Toronto Federal Districts
+data("toFederalVotes")
+fed_votes <- toFederalVotes
+# Sumarize just the three major parties, the rest are "Other"
+major_parties <- c("Conservative", "Liberal", "NDP")
+# Standardize the names
+levels(fed_votes$party)[c(16, 17, 19)] <- c("NDP", "NDP", "Conservative")
+levels(fed_votes$party)[!(levels(fed_votes$party) %in% major_parties)] <- "Other"
+droplevels(fed_votes)
+# Add in star candidate status
+star_status <- readr::read_csv("data/star_status.csv") %>%
+  mutate(year = as.factor(year),
+         candidate = as.factor(candidate))
+candidates <- dplyr::left_join(fed_votes, star_status) %>%
+  group_by(year, district, poll, party) %>%
+  summarize(star_candidate = max(star_candidate),
+            incumbent = max(incumbent),
+            n = n()) %>%
+  select(-n)
+rm(star_status)
+# Summarize votes by year, district, and poll
+fed_votes <- fed_votes %>%
+  mutate(# Clean up polling labels
+    # -[letter]|[number] indicate sub-polls and should be merged
+    poll = stringr::str_replace(poll, "(\\d{1,3})(-\\d+\\w?|\\D$)", "\\1")
+  ) %>%
+  group_by(year, district, poll, party) %>%
+  summarize(votes = sum(votes)) %>%
+  mutate(prop_votes = votes/sum(votes))
+
+data <- dplyr::left_join(candidates, fed_votes)
+
+library(nlme)
+library(ape)
+candidate_model <- lme(prop_votes ~ party + star_candidate*incumbent, data = data, 
+                    random = ~1|year/district, na.action = na.exclude)
+summary(candidate_model)
+
+ggplot(data, aes(x = factor(incumbent), y = prop_votes, fill = factor(star_candidate))) + 
+  geom_boxplot() +
+  scale_x_discrete("Incumbent") +
+  scale_y_continuous("Proportion of votes") +
+  guides(fill = guide_legend(title = "Star candidate"))
+
+```
+
+Preliminary models show that being either a star candidate or an incumbent can boost your share of the vote by 20%. But, being both doesn't get you an incremental increase.
+The effect is roughly equivalent to belonging to a party. So, being a PC/Liberal/NDP member gets you about 20% over unaffiliated. Being a star or an incumbent gets you to 40%.
+Interpretation needs to be careful though. PCs don't have any incumbents in the data and NDP don't have any non-incumbent stars.
