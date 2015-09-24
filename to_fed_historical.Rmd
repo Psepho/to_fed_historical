@@ -71,9 +71,9 @@ geo <- ggplot2::fortify(fed_votes_2011_geo, region="id")
 library(ggplot2)
 ggplot(data, aes(map_id = id)) +
   geom_map(aes(fill = cut_interval(change_votes, n = 5)), map = geo) +
-  scale_fill_brewer("Change in the proportion", labels=c("Decrease", rep("", 3), "Increase"),
+  scale_fill_brewer("Change in proportion", labels=c("Decrease", rep("", 3), "Increase"),
                     type = "div", palette = "BrBG") +
-  labs(x="", y="", title= "Votes in the 2006 and 2011 Federal General Election") +
+  labs(x="", y="", title= "Votes in the 2006 and 2011 Federal General Elections") +
   theme(axis.ticks.y = element_blank(), axis.text.y = element_blank(), # get rid of x ticks/text
         axis.ticks.x = element_blank(), axis.text.x = element_blank(), # get rid of y ticks/text
         plot.title = element_text(lineheight=.8, face="bold", vjust=1)) + # make title bold and add space
@@ -83,9 +83,13 @@ ggplot(data, aes(map_id = id)) +
 
 Clearly, the story from 2006 to 2011 is a large, widespread drop in Liberal party support (with an average decline of `r round(abs(mean(filter(data, party == "Liberal", !is.nan(change_votes))$change_votes)),2)*100`% and maximum decline of `r round(abs(min(filter(data, party == "Liberal", !is.nan(change_votes))$change_votes)),2)*100`%). The benefits of this decline were roughly equally shared by the Conservative and NDP parties, but in different locations. The NDP seems to have particularly benefited from the Liberal's decline in the north east.
 
-# Role of incumbents
+# Role of incumbents and star candidates
 
-```{r, incumbents, echo=FALSE}
+Generally, incumbents in elections are expected to do well. Parties also devote considerable resources to promoting "star" candidates. How important are these two effects? The Elections Canada data indicates which candiates were incumbents in each election. For star candiates, we reviewed the list for each of the three elections and determined "star" status based on name recognition. These allow us to investigate how incumbancy and star status affect the proportion of votes received by a candidate. They also allow us to determine how important the effects are relative to each other and whether they can reinforce each other.
+
+We start with a simple plot showing the proportion of votes received for the four types of candidate.
+
+```{r, incumbents, echo=FALSE, cache = TRUE}
 library(toVotes)
 library(dplyr)
 # Extract a list of Toronto Federal Districts
@@ -103,8 +107,8 @@ star_status <- readr::read_csv("data/star_status.csv") %>%
          candidate = as.factor(candidate))
 candidates <- dplyr::left_join(fed_votes, star_status) %>%
   group_by(year, district, poll, party) %>%
-  summarize(star_candidate = max(star_candidate),
-            incumbent = max(incumbent),
+  summarize(star_candidate = as.logical(max(star_candidate)),
+            incumbent = as.logical(max(incumbent)),
             n = n()) %>%
   select(-n)
 rm(star_status)
@@ -124,7 +128,8 @@ library(nlme)
 library(ape)
 candidate_model <- lme(prop_votes ~ party + star_candidate*incumbent, data = data, 
                     random = ~1|year/district, na.action = na.exclude)
-summary(candidate_model)
+candidate.effects <- fixed.effects(candidate_model)
+# summary(candidate_model)
 
 ggplot(data, aes(x = factor(incumbent), y = prop_votes, fill = factor(star_candidate))) + 
   geom_boxplot() +
@@ -134,6 +139,8 @@ ggplot(data, aes(x = factor(incumbent), y = prop_votes, fill = factor(star_candi
 
 ```
 
-Preliminary models show that being either a star candidate or an incumbent can boost your share of the vote by 20%. But, being both doesn't get you an incremental increase.
-The effect is roughly equivalent to belonging to a party. So, being a PC/Liberal/NDP member gets you about 20% over unaffiliated. Being a star or an incumbent gets you to 40%.
+A mixed-effects model of these data show that being either a star candidate or an incumbent can boost a candidates share of the vote by `r round(mean(candidate.effects["star_candidateTRUE"], candidate.effects["incumbentTRUE"]), 2)*100`%. But, as is clear in the figure above, being both an incumbent and a star candidate does not give a candidate an incremental increase. In other words, the effects are not additive, as evidenced by the statistically significant interaction between the two effects.
+
+Furthermore, the two effects are equivalent to belonging to a party (`r round(mean(candidate.effects["partyConservative"], candidate.effects["partyLiberal"], candidate.effects["partyNDP"]), 2)*100`%). So, being a member of a major party and either incumbent or a star candidate (i.e., heavily promoted) offers the best chance of winning an election. Perhaps not a surprising finding overall, but the relative equality of the three effects, plus negative interaction of incumbency and star candidate, are useful nuances.
+
 Interpretation needs to be careful though. PCs don't have any incumbents in the data and NDP don't have any non-incumbent stars.
