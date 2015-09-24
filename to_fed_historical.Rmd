@@ -144,3 +144,59 @@ A mixed-effects model of these data show that being either a star candidate or a
 Furthermore, the two effects are equivalent to belonging to a party (`r round(mean(candidate.effects["partyConservative"], candidate.effects["partyLiberal"], candidate.effects["partyNDP"]), 2)*100`%). So, being a member of a major party and either incumbent or a star candidate (i.e., heavily promoted) offers the best chance of winning an election. Perhaps not a surprising finding overall, but the relative equality of the three effects, plus negative interaction of incumbency and star candidate, are useful nuances.
 
 Interpretation needs to be careful though. PCs don't have any incumbents in the data and NDP don't have any non-incumbent stars.
+
+# Party leaders
+
+Another prominant feature of modern elections is the focus on the party leader. We've assigned each party leader a "likeability score" for each election and can include this factor in our analysis of the proportion of votes received.
+
+```{r, leaders}
+library(toVotes)
+library(dplyr)
+# Extract a list of Toronto Federal Districts
+data("toFederalVotes")
+fed_votes <- toFederalVotes
+# Sumarize just the three major parties, the rest are "Other"
+major_parties <- c("Conservative", "Liberal", "NDP")
+# Standardize the names
+levels(fed_votes$party)[c(16, 17, 19)] <- c("NDP", "NDP", "Conservative")
+levels(fed_votes$party)[!(levels(fed_votes$party) %in% major_parties)] <- "Other"
+droplevels(fed_votes)
+# Add in star candidate status
+star_status <- readr::read_csv("data/star_status.csv") %>%
+  mutate(year = as.factor(year),
+         candidate = as.factor(candidate))
+candidates <- dplyr::left_join(fed_votes, star_status) %>%
+  group_by(year, district, poll, party) %>%
+  summarize(star_candidate = as.logical(max(star_candidate)),
+            incumbent = as.logical(max(incumbent)),
+            n = n()) %>%
+  select(-n)
+rm(star_status)
+# Summarize votes by year, district, and poll
+fed_votes <- fed_votes %>%
+  mutate(# Clean up polling labels
+    # -[letter]|[number] indicate sub-polls and should be merged
+    poll = stringr::str_replace(poll, "(\\d{1,3})(-\\d+\\w?|\\D$)", "\\1")
+  ) %>%
+  group_by(year, district, poll, party) %>%
+  summarize(votes = sum(votes)) %>%
+  mutate(prop_votes = votes/sum(votes))
+
+data <- dplyr::left_join(candidates, fed_votes)
+leaders <- readxl::read_excel("data/Position Scores.xlsx", sheet = "Likeability") %>% 
+  dplyr::select(Year, Party, Leader, Likeability) %>% 
+  dplyr::mutate(Party = as.factor(Party),
+                Year = as.factor(Year))
+names(leaders) <- tolower(names(leaders))
+data <- dplyr::left_join(data, leaders) %>% 
+  dplyr::filter(party != "Other")
+
+library(nlme)
+library(ape)
+leader_model <- lme(prop_votes ~ party + likeability + star_candidate*incumbent, data = data, 
+                    random = ~1|year/district, na.action = na.exclude)
+leader_effects <- fixed.effects(leader_model)
+summary(leader_model)
+```
+
+A linear, mixed effects model finds that leader likeability is associated with a `r round(leader_effects["likeability"][[1]], 3)*100`% change in the proportion of votes received by a candidate. For example, Stephan Dion caused an average `r (leaders$Likeability[leaders$Leader == "Paul Martin"][[1]] - leaders$Likeability[leaders$Leader == "Stephane Dion"][[1]])*round(leader_effects["likeability"][[1]], 3)*100`% decline for Liberal candidates in 2008, relative to Paul Martin.
