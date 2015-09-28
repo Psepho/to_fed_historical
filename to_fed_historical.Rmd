@@ -200,3 +200,40 @@ summary(leader_model)
 ```
 
 A linear, mixed effects model finds that leader likeability is associated with a `r round(leader_effects["likeability"][[1]], 3)*100`% change in the proportion of votes received by a candidate. For example, Stephan Dion caused an average `r (leaders$Likeability[leaders$Leader == "Paul Martin"][[1]] - leaders$Likeability[leaders$Leader == "Stephane Dion"][[1]])*round(leader_effects["likeability"][[1]], 3)*100`% decline for Liberal candidates in 2008, relative to Paul Martin.
+
+## Demographics
+
+```{r, demographics}
+library(toVotes)
+library(toCensus)
+library(dplyr)
+fed_votes_2006_geo@data$year <- 2006
+fed_votes_2008_geo@data$year <- 2008
+fed_votes_2011_geo@data$year <- 2011
+data <- dplyr::bind_rows(fed_votes_2006_geo@data, 
+                         fed_votes_2008_geo@data, 
+                         fed_votes_2011_geo@data) %>%
+  tidyr::gather(party, votes, Other, Conservative, Liberal, NDP) %>% 
+  mutate(Geo_Code = as.character(id), 
+         year = as.factor(year)) %>% 
+  dplyr::group_by(year, Geo_Code, party) %>%
+  dplyr::summarize(votes = sum(votes, na.rm = TRUE)) %>% 
+  dplyr::mutate(prop_votes = votes/sum(votes, na.rm = TRUE)) %>% 
+  dplyr::select(-votes)
+rm(fed_votes_2006_geo, fed_votes_2008_geo, fed_votes_2011_geo)
+demog <- toCensus %>% 
+  mutate(Geo_Code = sprintf("%.2f", as.numeric(Geo_Code))) %>% 
+  group_by(Geo_Code) %>% 
+  mutate(gender = as.integer(gender)-1) %>% 
+  summarize(gender = mean(gender, na.rm = TRUE),
+            age = mean(age, na.rm = TRUE),
+            family_income = mean(family_income, na.rm = TRUE))
+data <- dplyr::left_join(data, demog)
+
+library(nlme)
+library(ape)
+demog_model <- lme(prop_votes ~ party + gender + age + family_income, data = data, 
+                    random = ~1|year/Geo_Code, na.action = na.exclude)
+summary(demog_model)
+```
+
