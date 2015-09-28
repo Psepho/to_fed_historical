@@ -9,7 +9,7 @@ output: html_document
 
 We start by looking at how votes per party have changed over time. Since the polling boundaries and locations change each year, we've standardized the geography of voting by aggregating poll boundaries into census tracts.
 
-```{r,votes_by_year, echo=FALSE,message=FALSE}
+```{r votes_by_year, echo=FALSE,message=FALSE}
 library(toVotes)
 ct_vote_plot <- function(geo_data, year) {
   library(dplyr)
@@ -36,7 +36,7 @@ ct_vote_plot <- function(geo_data, year) {
 }
 ```
 
-```{r, echo=FALSE, cache=TRUE}
+```{r historical_plots, echo=FALSE, cache=TRUE}
 ct_vote_plot(fed_votes_2006_geo, 2006)
 ct_vote_plot(fed_votes_2008_geo, 2008)
 ct_vote_plot(fed_votes_2011_geo, 2011)
@@ -46,7 +46,7 @@ One pattern that is consistent across all years is the relatively poor showing o
 
 We can take a more direct look at how party support changes over time by plotting the change in the proportion of votes received by each party between 2006 and 2011.
 
-```{r, change_in_votes, echo=FALSE}
+```{r change_in_votes, echo=FALSE}
 library(toVotes)
 library(dplyr)
 fed_votes_2006_geo@data$id <- row.names(fed_votes_2006_geo@data)
@@ -89,7 +89,7 @@ Generally, incumbents in elections are expected to do well. Parties also devote 
 
 We start with a simple plot showing the proportion of votes received for the four types of candidate.
 
-```{r, incumbents, echo=FALSE, cache = TRUE}
+```{r incumbents, echo=FALSE, cache = TRUE}
 library(toVotes)
 library(dplyr)
 # Extract a list of Toronto Federal Districts
@@ -149,7 +149,7 @@ Interpretation needs to be careful though. PCs don't have any incumbents in the 
 
 Another prominant feature of modern elections is the focus on the party leader. We've assigned each party leader a "likeability score" for each election and can include this factor in our analysis of the proportion of votes received.
 
-```{r, leaders}
+```{r leaders}
 library(toVotes)
 library(dplyr)
 # Extract a list of Toronto Federal Districts
@@ -203,7 +203,7 @@ A linear, mixed effects model finds that leader likeability is associated with a
 
 ## Demographics
 
-```{r, demographics}
+```{r demographics}
 library(toVotes)
 library(toCensus)
 library(dplyr)
@@ -218,8 +218,8 @@ data <- dplyr::bind_rows(fed_votes_2006_geo@data,
          year = as.factor(year)) %>% 
   dplyr::group_by(year, Geo_Code, party) %>%
   dplyr::summarize(votes = sum(votes, na.rm = TRUE)) %>% 
-  dplyr::mutate(prop_votes = votes/sum(votes, na.rm = TRUE)) %>% 
-  dplyr::select(-votes)
+  dplyr::mutate(prop_votes = votes/sum(votes, na.rm = TRUE)) # %>% 
+  # dplyr::select(-votes)
 rm(fed_votes_2006_geo, fed_votes_2008_geo, fed_votes_2011_geo)
 demog <- toCensus %>% 
   mutate(Geo_Code = sprintf("%.2f", as.numeric(Geo_Code))) %>% 
@@ -232,8 +232,11 @@ data <- dplyr::left_join(data, demog)
 
 library(nlme)
 library(ape)
-demog_model <- lme(prop_votes ~ party + gender + age + family_income, data = data, 
+demog_model <- lme(votes ~ party * (gender + age + family_income), data = data, 
                     random = ~1|year/Geo_Code, na.action = na.exclude)
+demog_prop_votes_model <- update(demog_model, prop_votes ~ .)
 summary(demog_model)
+fixed.effects(demog_model)
+summary(demog_prop_votes_model)
+fixed.effects(demog_prop_votes_model)
 ```
-
