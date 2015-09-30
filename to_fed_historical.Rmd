@@ -1,8 +1,10 @@
 ---
 title: "History of federal elections in Toronto"
 author: "PsephoAnalytics"
-date: "September 30, 2015"
-output: html_document
+date: '`r Sys.Date()`'
+output:
+  html_document:
+    css: psepho_styles.css
 ---
 
 ```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
@@ -13,7 +15,7 @@ library(ggplot2)
 library(nlme)
 library(ape)
 ```
-```{r data, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+```{r data, echo=FALSE, results='hide', warning=FALSE, message=FALSE}
 fed_votes_2006_geo@data$year <- 2006
 fed_votes_2008_geo@data$year <- 2008
 fed_votes_2011_geo@data$year <- 2011
@@ -107,7 +109,7 @@ Generally, incumbents in elections are expected to do well. Parties also devote 
 
 We start with a simple plot showing the proportion of votes received for the four types of candidate.
 
-```{r incumbents, echo=FALSE, message=FALSE}
+```{r incumbents, echo=FALSE, warning=FALSE, message=FALSE}
 # Add in star candidate status
 star_status <- readr::read_csv("data/star_status.csv") %>%
   mutate(year = as.factor(year),
@@ -140,7 +142,7 @@ Interpretation needs to be careful though. PCs don't have any incumbents in the 
 
 Another prominant feature of modern elections is the focus on the party leader. We've assigned each party leader a "likeability score" for each election and can include this factor in our analysis of the proportion of votes received.
 
-```{r leaders, echo=FALSE, message=FALSE}
+```{r leaders, echo=FALSE, warning=FALSE}
 leaders <- readxl::read_excel("data/Position Scores.xlsx", sheet = "Likeability") %>% 
   dplyr::select(Year, Party, Leader, Likeability) %>% 
   dplyr::mutate(Party = as.factor(Party),
@@ -167,6 +169,7 @@ data <- dplyr::bind_rows(fed_votes_2006_geo@data,
   tidyr::gather(party, votes, Other, Conservative, Liberal, NDP) %>% 
   mutate(Geo_Code = as.character(id), 
          year = as.factor(year)) %>% 
+  # dplyr::filter(party != "Other") %>% 
   dplyr::group_by(year, Geo_Code, party) %>%
   dplyr::summarize(votes = sum(votes, na.rm = TRUE)) %>% 
   dplyr::mutate(prop_votes = votes/sum(votes, na.rm = TRUE)) # %>% 
@@ -177,21 +180,23 @@ demog <- toCensus %>%
             age = mean(age, na.rm = TRUE),
             family_income = mean(family_income, na.rm = TRUE))
 data <- dplyr::left_join(data, demog)
-demog_model <- lme(prop_votes ~ party * (gender + age + family_income), data = data, 
+demog_model <- lme(prop_votes ~ (gender + age + family_income) * party, data = data, 
                     random = ~1|year/Geo_Code, na.action = na.exclude)
 summary(demog_model)
+demog_effects <- fixed.effects(demog_model)
 ```
+
 The linear, mixed effects model shows that the relationships among age, gender, family income, and the proportion of votes vary widely across the parties (as expected). In general, the effects are:
 
-- Age tends to increase support for Conservatives and Liberals (though the slope is higher for Conservatives; 0.010 vs 0.007), while decreasing support for NDP (-0.011).
-- Family income tends to increase support for Conservatives (0.05/$10,000) while decreasing for the other two major parties by roughly the same magnitude.
-- Gender is the strange one. We're getting a really strong signal for increased support of women for Conservatives, moderate support for Liberals, and strong negative support for NDP. I would have guessed the opposite. It might be that the combination of age, gender, and family income "explains" this effect (i.e., lots of old, rich women tend to vote Conservative), but this seems unlikely. I'm going to keep looking into this.
+- Age tends to increase support for Conservatives and Liberals (though the slope is higher for Conservatives; `r round(demog_effects["age:partyConservative"][[1]], 3)` vs `r round(demog_effects["age:partyLiberal"][[1]], 3)`), while decreasing support for NDP (`r round(demog_effects["age:partyNDP"][[1]], 3)`).
+- Family income tends to increase support for Conservatives (`r round(demog_effects["family_income:partyConservative"][[1]]*10000,3)`/$10,000) while decreasing for the other two major parties by roughly the same magnitude.
+- Gender is the strange one. We're getting a really strong signal for increased support of women for Conservatives, moderate support for Liberals, and strong negative support for NDP.
 
 ## Putting it all together
 
 We've looked at different aspects of candidates, their leaders, and voters. In the end, all of these things matter when votes are actually cast. So, we now consider all aspects simultaneously.
 
-```{r comprehensive, echo=FALSE}
+```{r comprehensive, echo=FALSE, warning=FALSE, message=FALSE}
 candidates <- candidate_attr %>% 
   mutate(Geo_Code = id,
          year = as.factor(year)) %>% 
@@ -204,4 +209,3 @@ comprehensive_model <- lme(prop_votes ~ party * (gender + age + family_income)
                     random = ~1|year/Geo_Code, na.action = na.exclude)
 summary(comprehensive_model)
 ```
-
