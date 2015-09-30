@@ -1,21 +1,49 @@
 ---
 title: "History of federal elections in Toronto"
 author: "PsephoAnalytics"
-date: "September 21, 2015"
+date: "September 30, 2015"
 output: html_document
 ---
+
+```{r setup, echo=FALSE, message=FALSE, warning=FALSE}
+library(toVotes)
+library(toCensus)
+library(dplyr)
+library(ggplot2)
+library(nlme)
+library(ape)
+```
+```{r data, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+fed_votes_2006_geo@data$year <- 2006
+fed_votes_2008_geo@data$year <- 2008
+fed_votes_2011_geo@data$year <- 2011
+fed_votes <- toFederalVotes
+# Sumarize just the three major parties, the rest are "Other"
+major_parties <- c("Conservative", "Liberal", "NDP")
+# Standardize the names
+levels(fed_votes$party)[c(16, 17, 19)] <- c("NDP", "NDP", "Conservative")
+levels(fed_votes$party)[!(levels(fed_votes$party) %in% major_parties)] <- "Other"
+droplevels(fed_votes)
+# Summarize votes by year, district, and poll
+votes <- fed_votes %>%
+  mutate(# Clean up polling labels
+    # -[letter]|[number] indicate sub-polls and should be merged
+    poll = stringr::str_replace(poll, "(\\d{1,3})(-\\d+\\w?|\\D$)", "\\1")
+  ) %>%
+  group_by(year, district, poll, party) %>%
+  summarize(votes = sum(votes)) %>%
+  mutate(prop_votes = votes/sum(votes))
+```
 
 # Historical patterns
 
 We start by looking at how votes per party have changed over time. Since the polling boundaries and locations change each year, we've standardized the geography of voting by aggregating poll boundaries into census tracts.
 
-```{r votes_by_year, echo=FALSE,message=FALSE}
-library(toVotes)
+```{r votes_by_year, echo=FALSE, message=FALSE, cache=TRUE}
 ct_vote_plot <- function(geo_data, year) {
   library(dplyr)
-  geo_data@data$id <- row.names(geo_data@data)
   data <- geo_data@data %>%
-    tidyr::gather(party, votes, -id) %>%
+    tidyr::gather(party, votes, -id, -year) %>%
     dplyr::group_by(id, party, add = FALSE) %>%
     dplyr::summarize(votes = sum(votes, na.rm = TRUE)) %>%
     dplyr::mutate(prop_votes = votes/sum(votes)) %>%
@@ -36,7 +64,7 @@ ct_vote_plot <- function(geo_data, year) {
 }
 ```
 
-```{r historical_plots, echo=FALSE, cache=TRUE}
+```{r historical_plots, echo=FALSE, message=FALSE, cache=TRUE}
 ct_vote_plot(fed_votes_2006_geo, 2006)
 ct_vote_plot(fed_votes_2008_geo, 2008)
 ct_vote_plot(fed_votes_2011_geo, 2011)
@@ -46,15 +74,7 @@ One pattern that is consistent across all years is the relatively poor showing o
 
 We can take a more direct look at how party support changes over time by plotting the change in the proportion of votes received by each party between 2006 and 2011.
 
-```{r change_in_votes, echo=FALSE}
-library(toVotes)
-library(dplyr)
-fed_votes_2006_geo@data$id <- row.names(fed_votes_2006_geo@data)
-fed_votes_2008_geo@data$id <- row.names(fed_votes_2008_geo@data)
-fed_votes_2011_geo@data$id <- row.names(fed_votes_2011_geo@data)
-fed_votes_2006_geo@data$year <- 2006
-fed_votes_2008_geo@data$year <- 2008
-fed_votes_2011_geo@data$year <- 2011
+```{r change_in_votes, echo=FALSE, message=FALSE}
 data <- dplyr::bind_rows(fed_votes_2006_geo@data, 
                          fed_votes_2008_geo@data, 
                          fed_votes_2011_geo@data) %>%
@@ -66,9 +86,7 @@ data <- dplyr::bind_rows(fed_votes_2006_geo@data,
   dplyr::select(-votes) %>% 
   dplyr::group_by(id, party) %>% 
   dplyr::summarize(change_votes = diff(prop_votes))
-fed_votes_2011_geo@data <- dplyr::select(fed_votes_2011_geo@data, id)
 geo <- ggplot2::fortify(fed_votes_2011_geo, region="id")
-library(ggplot2)
 ggplot(data, aes(map_id = id)) +
   geom_map(aes(fill = cut_interval(change_votes, n = 5)), map = geo) +
   scale_fill_brewer("Change in proportion", labels=c("Decrease", rep("", 3), "Increase"),
@@ -89,18 +107,7 @@ Generally, incumbents in elections are expected to do well. Parties also devote 
 
 We start with a simple plot showing the proportion of votes received for the four types of candidate.
 
-```{r incumbents, echo=FALSE, cache = TRUE}
-library(toVotes)
-library(dplyr)
-# Extract a list of Toronto Federal Districts
-data("toFederalVotes")
-fed_votes <- toFederalVotes
-# Sumarize just the three major parties, the rest are "Other"
-major_parties <- c("Conservative", "Liberal", "NDP")
-# Standardize the names
-levels(fed_votes$party)[c(16, 17, 19)] <- c("NDP", "NDP", "Conservative")
-levels(fed_votes$party)[!(levels(fed_votes$party) %in% major_parties)] <- "Other"
-droplevels(fed_votes)
+```{r incumbents, echo=FALSE, message=FALSE}
 # Add in star candidate status
 star_status <- readr::read_csv("data/star_status.csv") %>%
   mutate(year = as.factor(year),
@@ -111,32 +118,15 @@ candidates <- dplyr::left_join(fed_votes, star_status) %>%
             incumbent = as.logical(max(incumbent)),
             n = n()) %>%
   select(-n)
-rm(star_status)
-# Summarize votes by year, district, and poll
-fed_votes <- fed_votes %>%
-  mutate(# Clean up polling labels
-    # -[letter]|[number] indicate sub-polls and should be merged
-    poll = stringr::str_replace(poll, "(\\d{1,3})(-\\d+\\w?|\\D$)", "\\1")
-  ) %>%
-  group_by(year, district, poll, party) %>%
-  summarize(votes = sum(votes)) %>%
-  mutate(prop_votes = votes/sum(votes))
-
-data <- dplyr::left_join(candidates, fed_votes)
-
-library(nlme)
-library(ape)
+data <- dplyr::left_join(candidates, votes)
 candidate_model <- lme(prop_votes ~ party + star_candidate*incumbent, data = data, 
                     random = ~1|year/district, na.action = na.exclude)
 candidate.effects <- fixed.effects(candidate_model)
-# summary(candidate_model)
-
 ggplot(data, aes(x = factor(incumbent), y = prop_votes, fill = factor(star_candidate))) + 
   geom_boxplot() +
   scale_x_discrete("Incumbent") +
   scale_y_continuous("Proportion of votes") +
   guides(fill = guide_legend(title = "Star candidate"))
-
 ```
 
 A mixed-effects model of these data show that being either a star candidate or an incumbent can boost a candidates share of the vote by `r round(mean(candidate.effects["star_candidateTRUE"], candidate.effects["incumbentTRUE"]), 2)*100`%. But, as is clear in the figure above, being both an incumbent and a star candidate does not give a candidate an incremental increase. In other words, the effects are not additive, as evidenced by the statistically significant interaction between the two effects.
@@ -149,40 +139,7 @@ Interpretation needs to be careful though. PCs don't have any incumbents in the 
 
 Another prominant feature of modern elections is the focus on the party leader. We've assigned each party leader a "likeability score" for each election and can include this factor in our analysis of the proportion of votes received.
 
-```{r leaders}
-library(toVotes)
-library(dplyr)
-# Extract a list of Toronto Federal Districts
-data("toFederalVotes")
-fed_votes <- toFederalVotes
-# Sumarize just the three major parties, the rest are "Other"
-major_parties <- c("Conservative", "Liberal", "NDP")
-# Standardize the names
-levels(fed_votes$party)[c(16, 17, 19)] <- c("NDP", "NDP", "Conservative")
-levels(fed_votes$party)[!(levels(fed_votes$party) %in% major_parties)] <- "Other"
-droplevels(fed_votes)
-# Add in star candidate status
-star_status <- readr::read_csv("data/star_status.csv") %>%
-  mutate(year = as.factor(year),
-         candidate = as.factor(candidate))
-candidates <- dplyr::left_join(fed_votes, star_status) %>%
-  group_by(year, district, poll, party) %>%
-  summarize(star_candidate = as.logical(max(star_candidate)),
-            incumbent = as.logical(max(incumbent)),
-            n = n()) %>%
-  select(-n)
-rm(star_status)
-# Summarize votes by year, district, and poll
-fed_votes <- fed_votes %>%
-  mutate(# Clean up polling labels
-    # -[letter]|[number] indicate sub-polls and should be merged
-    poll = stringr::str_replace(poll, "(\\d{1,3})(-\\d+\\w?|\\D$)", "\\1")
-  ) %>%
-  group_by(year, district, poll, party) %>%
-  summarize(votes = sum(votes)) %>%
-  mutate(prop_votes = votes/sum(votes))
-
-data <- dplyr::left_join(candidates, fed_votes)
+```{r leaders, echo=FALSE, message=FALSE}
 leaders <- readxl::read_excel("data/Position Scores.xlsx", sheet = "Likeability") %>% 
   dplyr::select(Year, Party, Leader, Likeability) %>% 
   dplyr::mutate(Party = as.factor(Party),
@@ -190,9 +147,6 @@ leaders <- readxl::read_excel("data/Position Scores.xlsx", sheet = "Likeability"
 names(leaders) <- tolower(names(leaders))
 data <- dplyr::left_join(data, leaders) %>% 
   dplyr::filter(party != "Other")
-
-library(nlme)
-library(ape)
 leader_model <- lme(prop_votes ~ party + likeability + star_candidate*incumbent, data = data, 
                     random = ~1|year/district, na.action = na.exclude)
 leader_effects <- fixed.effects(leader_model)
@@ -203,13 +157,9 @@ A linear, mixed effects model finds that leader likeability is associated with a
 
 ## Demographics
 
-```{r demographics}
-library(toVotes)
-library(toCensus)
-library(dplyr)
-fed_votes_2006_geo@data$year <- 2006
-fed_votes_2008_geo@data$year <- 2008
-fed_votes_2011_geo@data$year <- 2011
+Now that we've looked at aspects of candidates and their leaders, we can move to attributes of the voters themselves. In this case, we use data from the 2011 Census, specifically age, gender, and family income.
+
+```{r demographics, echo=FALSE, message=FALSE}
 data <- dplyr::bind_rows(fed_votes_2006_geo@data, 
                          fed_votes_2008_geo@data, 
                          fed_votes_2011_geo@data) %>%
@@ -219,24 +169,38 @@ data <- dplyr::bind_rows(fed_votes_2006_geo@data,
   dplyr::group_by(year, Geo_Code, party) %>%
   dplyr::summarize(votes = sum(votes, na.rm = TRUE)) %>% 
   dplyr::mutate(prop_votes = votes/sum(votes, na.rm = TRUE)) # %>% 
-  # dplyr::select(-votes)
-rm(fed_votes_2006_geo, fed_votes_2008_geo, fed_votes_2011_geo)
 demog <- toCensus %>% 
-  mutate(Geo_Code = sprintf("%.2f", as.numeric(Geo_Code))) %>% 
   group_by(Geo_Code) %>% 
   mutate(gender = as.integer(gender)-1) %>% 
   summarize(gender = mean(gender, na.rm = TRUE),
             age = mean(age, na.rm = TRUE),
             family_income = mean(family_income, na.rm = TRUE))
 data <- dplyr::left_join(data, demog)
-
-library(nlme)
-library(ape)
-demog_model <- lme(votes ~ party * (gender + age + family_income), data = data, 
+demog_model <- lme(prop_votes ~ party * (gender + age + family_income), data = data, 
                     random = ~1|year/Geo_Code, na.action = na.exclude)
-demog_prop_votes_model <- update(demog_model, prop_votes ~ .)
 summary(demog_model)
-fixed.effects(demog_model)
-summary(demog_prop_votes_model)
-fixed.effects(demog_prop_votes_model)
 ```
+The linear, mixed effects model shows that the relationships among age, gender, family income, and the proportion of votes vary widely across the parties (as expected). In general, the effects are:
+
+- Age tends to increase support for Conservatives and Liberals (though the slope is higher for Conservatives; 0.010 vs 0.007), while decreasing support for NDP (-0.011).
+- Family income tends to increase support for Conservatives (0.05/$10,000) while decreasing for the other two major parties by roughly the same magnitude.
+- Gender is the strange one. We're getting a really strong signal for increased support of women for Conservatives, moderate support for Liberals, and strong negative support for NDP. I would have guessed the opposite. It might be that the combination of age, gender, and family income "explains" this effect (i.e., lots of old, rich women tend to vote Conservative), but this seems unlikely. I'm going to keep looking into this.
+
+## Putting it all together
+
+We've looked at different aspects of candidates, their leaders, and voters. In the end, all of these things matter when votes are actually cast. So, we now consider all aspects simultaneously.
+
+```{r comprehensive, echo=FALSE}
+candidates <- candidate_attr %>% 
+  mutate(Geo_Code = id,
+         year = as.factor(year)) %>% 
+  select(-id)
+data <- dplyr::left_join(data, candidates)
+data <- dplyr::left_join(data, leaders) %>% 
+  dplyr::filter(party != "Other")
+comprehensive_model <- lme(prop_votes ~ party * (gender + age + family_income) 
+                           + likeability + star_candidate*incumbent, data = data, 
+                    random = ~1|year/Geo_Code, na.action = na.exclude)
+summary(comprehensive_model)
+```
+
