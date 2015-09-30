@@ -124,6 +124,7 @@ candidate_model <- lme(prop_votes ~ party + star_candidate*incumbent, data = dat
 candidate.effects <- fixed.effects(candidate_model)
 ggplot(data, aes(x = factor(incumbent), y = prop_votes, fill = factor(star_candidate))) + 
   geom_boxplot() +
+  scale_fill_brewer(palette = 7) +
   scale_x_discrete("Incumbent") +
   scale_y_continuous("Proportion of votes") +
   guides(fill = guide_legend(title = "Star candidate"))
