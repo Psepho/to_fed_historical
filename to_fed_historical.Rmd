@@ -158,9 +158,40 @@ leader_effects <- fixed.effects(leader_model)
 
 A linear, mixed effects model finds that leader likeability is associated with a `r round(leader_effects["likeability"][[1]], 3)*100`% change in the proportion of votes received by a candidate. For example, Stephan Dion caused an average `r (leaders$Likeability[leaders$Leader == "Paul Martin"][[1]] - leaders$Likeability[leaders$Leader == "Stephane Dion"][[1]])*round(leader_effects["likeability"][[1]], 3)*100`% decline for Liberal candidates in 2008, relative to Paul Martin.
 
-## Demographics
+# Positions
 
-Now that we've looked at aspects of candidates and their leaders, we can move to attributes of the voters themselves. In this case, we use data from the 2011 Census, specifically age, gender, and family income.
+The final component from a candiates perspective that we consider is the parties' platforms. Here we've analyzed the parties' platforms from previous years and scored them along six topics: economy, environment, foreign policy, government, social, and health and education. 
+
+```{r platforms, echo=FALSE, warning=FALSE, message=FALSE}
+platforms <- readxl::read_excel("data/Position Scores.xlsx", sheet = "Summary Postions", skip = 29)[,1:8] %>% 
+  dplyr::filter(!is.na(Year))
+names(platforms) <-tolower(names(platforms))
+names(platforms)[c(2, 5, 8)] <- c("party", "foreign_policy", "health_education")
+platforms$year <- as.factor(platforms$year)
+platforms$party <- as.factor(platforms$party)
+platforms <- tidyr::gather(platforms, topic, score, -year, -party)
+platform_data <- dplyr::left_join(votes, platforms) %>% 
+  dplyr::filter(party != "Other",
+                topic %in% c("environment", "economy"))
+platform_model <- lme(prop_votes ~ party + topic, data = platform_data, 
+                    random = ~1|year/district, na.action = na.exclude)
+platform_spread <- tidyr::spread(platforms, topic, score)
+platform_spread <- dplyr::left_join(votes, platform_spread) %>% 
+  dplyr::filter(party != "Other")
+platform_spread_model <- lme(prop_votes ~ party + economy + 
+                               environment + foreign_policy + 
+                               government + social, 
+                             data = platform_spread, 
+                    random = ~1|year/district, na.action = na.exclude)
+focused_platform <- update(platform_spread_model, . ~ party * (economy + environment))
+platform_effects <- fixed.effects(focused_platform)
+```
+
+Considering all `r length(levels(platform_data$topic))` topics, only the economy and the environment have significant effects on the proportion of votes received by the parties. High scores for either the economy or the environment decrease the proportion of votes for the Conservatives. The economic effect is very small (`r round(platform_effects["economy"][[1]],3)`) and the environmental one is as strongly negative (`r round(platform_effects["environment"][[1]],3)`) as the Liberals is positive. Both topics increase votes for the Liberals and the NDP. However, the Liberals benefit `r round(platform_effects["partyLiberal:economy"][[1]]/platform_effects["partyNDP:economy"][[1]], 0)` times as much on economic topics, while the NDP benefit `r round(platform_effects["partyNDP:environment"][[1]]/platform_effects["partyLiberal:environment"][[1]], 1)` times as much on environmental.
+
+# Demographics
+
+Now that we've looked at aspects of candidates, parties, and their leaders, we can move to attributes of the voters themselves. In this case, we use data from the 2011 Census, specifically age, gender, and family income.
 
 ```{r demographics, echo=FALSE, message=FALSE, cache=TRUE}
 data <- dplyr::bind_rows(fed_votes_2006_geo@data, 
@@ -210,42 +241,17 @@ One evident pattern is that the points are oriented vertically. A strong gender 
 
 However, if we look a little closer at the bottom left of the panel for Conservatives, we see a cluster of census tracts with a relatively high proportion of males that has low support for Conservatives (below about 0.2 for proportion of votes). Liberals appear to have support from some of these high-male proportion census tracts between about 0.3 and 0.6 for proportion of votes and the NDP from about 0.1 to 0.5. The gender effect may, in fact, be due to specific, predominantly male census tracts that tend to note favour the Conservatives.
 
-## Positions
+# Putting it all together
 
-The final component of an election that we consider is the parties' platforms.
+We've looked at different aspects of candidates, their leaders, and voters. In the end, all of these things matter when votes are actually cast. So, we now consider all aspects simultaneously.
 
-```{r platforms, echo=FALSE, warning=FALSE, message=FALSE}
+```{r comprehensive, echo=FALSE, warning=FALSE, message=FALSE, cache=TRUE}
 platforms <- readxl::read_excel("data/Position Scores.xlsx", sheet = "Summary Postions", skip = 29)[,1:8] %>% 
   dplyr::filter(!is.na(Year))
 names(platforms) <-tolower(names(platforms))
 names(platforms)[c(2, 5, 8)] <- c("party", "foreign_policy", "health_education")
 platforms$year <- as.factor(platforms$year)
 platforms$party <- as.factor(platforms$party)
-platforms <- tidyr::gather(platforms, topic, score, -year, -party)
-platform_data <- dplyr::left_join(votes, platforms) %>% 
-  dplyr::filter(party != "Other",
-                topic %in% c("environment", "economy"))
-platform_model <- lme(prop_votes ~ party + topic, data = platform_data, 
-                    random = ~1|year/district, na.action = na.exclude)
-platform_spread <- tidyr::spread(platforms, topic, score)
-platform_spread <- dplyr::left_join(votes, platform_spread) %>% 
-  dplyr::filter(party != "Other")
-platform_spread_model <- lme(prop_votes ~ party + economy + 
-                               environment + foreign_policy + 
-                               government + social, 
-                             data = platform_spread, 
-                    random = ~1|year/district, na.action = na.exclude)
-focused_platform <- update(platform_spread_model, . ~ party * (economy + environment))
-platform_effects <- fixed.effects(focused_platform)
-```
-
-Considering all `r length(levels(platform_data$topic))` topics, only the economy and the environment have significant effects on the proportion of votes received by the parties. High scores for either the economy or the environment decrease the proportion of votes for the Conservatives. The economic effect is very small (`r round(platform_effects["economy"][[1]],3)`) and the environmental one is as strongly negative (`r round(platform_effects["environment"][[1]],3)`) as the Liberals is positive. Both topics increase votes for the Liberals and the NDP. However, the Liberals benefit `r round(platform_effects["partyLiberal:economy"][[1]]/platform_effects["partyNDP:economy"][[1]], 0)` times as much on economic topics, while the NDP benefit `r round(platform_effects["partyNDP:environment"][[1]]/platform_effects["partyLiberal:environment"][[1]], 1)` times as much on environmental.
-
-## Putting it all together
-
-We've looked at different aspects of candidates, their leaders, and voters. In the end, all of these things matter when votes are actually cast. So, we now consider all aspects simultaneously.
-
-```{r comprehensive, echo=FALSE, warning=FALSE, message=FALSE, cache=TRUE}
 candidates <- candidate_attr %>% 
   mutate(Geo_Code = id,
          year = as.factor(year)) %>% 
@@ -253,8 +259,12 @@ candidates <- candidate_attr %>%
 data <- dplyr::left_join(data, candidates)
 data <- dplyr::left_join(data, leaders) %>% 
   dplyr::filter(party != "Other")
-comprehensive_model <- lme(prop_votes ~ party * (gender + age + family_income) 
-                           + likeability + star_candidate*incumbent, data = data, 
+data <- dplyr::left_join(data, platforms)
+comprehensive_model <- lme(prop_votes ~ party * (gender + age + family_income) +
+                             (economy + environment) +
+                             likeability + star_candidate*incumbent, 
+                           data = data, 
                     random = ~1|year/Geo_Code, na.action = na.exclude)
-summary(comprehensive_model)
+# summary(comprehensive_model)
+(comprehensive_effects <- fixed.effects(comprehensive_model))
 ```
