@@ -1,0 +1,182 @@
+/* Set the main font to Calibri. 
+   Also set the default font size to 11pt.
+ 
+   The maximum width to 35em enhances 
+   readability through optimal line 
+   length. */
+body  {
+   font-family: Calibri;
+   font-size: 11pt;
+   background-color: white;
+   padding-top: 1em;
+   margin: auto;
+   max-width: 35em;
+   background: no-repeat right top url(data:image/png;base64,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);
+}
+
+ 
+/* Set the paragraph margin and 
+   padding to 0 except for the bottom */
+p {
+  padding: 0;
+  margin: 0;
+  margin-bottom: 10pt;
+}
+ 
+/* Center the table and add top/bottom margins */
+table{
+  margin: auto;
+  margin-top: 1em;
+  margin-bottom: 1em;
+  border: none;
+}
+ 
+/* The tr padding/margin 0 is important for table
+   import, while the font needs to be specified as
+   font and not font-family/font-size */
+td, tr{
+  font: 10pt Arial;
+  padding: 0px;
+  margin: 0px;
+}
+ 
+/* The cell should have a little space to easy reading */
+td {
+  padding: 4px;
+  padding-bottom: 2px;
+}
+ 
+/* Set the headings to correspond to Word-style */
+h1, h2, h3, h4, h5, h6 {
+  margin: 10pt 0pt 0pt 0pt;
+  font-family: Cambria;
+  font-weight: bold;
+  color: #fdb863;
+}
+ 
+/* h1 has a slightly larger top margins 
+   so we re-set that from the other*/
+h1 {
+  margin: 24pt 0pt 0pt 0pt;
+  font-size: 14pt;
+  color: #e66101;
+}
+ 
+ 
+h2 {
+  font-size: 13pt;
+}
+ 
+h3 {
+  font-size: 11pt;
+}
+ 
+h4 {
+  font-size: 11pt;
+  font-weight: bold;
+  font-style: italic;
+}
+ 
+h5 {
+  font-size: 11pt;
+  font-weight: normal;
+}
+ 
+h6 {
+  font-size: 11pt;
+  font-weight: normal;
+  font-style: italic;
+}
+
+tt, code, pre {
+   font-family: 'DejaVu Sans Mono', 'Droid Sans Mono', 'Lucida Console', Consolas, Monaco, monospace;
+}
+ 
+a {
+   color: #a14300;
+}
+
+a:visited {
+   color: #8a3a00;
+}
+ 
+pre {  
+   margin-top: 0;
+   max-width: 95%;
+   border: 1px solid #ccc;
+   white-space: pre-wrap;
+}
+ 
+pre code {
+   display: block; padding: 0.5em;
+}
+ 
+code.r, code.cpp {
+   background-color: #F8F8F8;
+}
+ 
+blockquote {
+   color:#666666;
+   margin:0;
+   padding-left: 1em;
+   border-left: 0.5em #EEE solid;
+}
+ 
+hr {
+   height: 0px;
+   border-bottom: none;
+   border-top-width: thin;
+   border-top-style: dotted;
+   border-top-color: #999999;
+}
+ 
+@media print {
+   * {
+      background: transparent !important;
+      color: black !important;
+      filter: none !important;
+      -ms-filter: none !important;
+   }
+ 
+   body {
+      font-size:11pt;
+      max-width:100%;
+   }
+ 
+   a, a:visited {
+      text-decoration: underline;
+   }
+ 
+   hr {
+      visibility: hidden;
+      page-break-before: always;
+   }
+ 
+   pre, blockquote {
+      padding-right: 1em;
+      page-break-inside: avoid;
+   }
+ 
+   tr, img {
+      page-break-inside: avoid;
+   }
+ 
+   img {
+      max-width: 100% !important;
+   }
+ 
+   @page {
+      margin-top: 2cm;
+      margin-bottom: 1.5cm;
+      margin-left: 3cm;
+      margin-right: 3cm;
+   }
+ 
+   p, h2, h3 {
+      orphans: 3; widows: 3;
+   }
+ 
+   h2, h3 {
+      page-break-after: avoid;
+   }
+}
