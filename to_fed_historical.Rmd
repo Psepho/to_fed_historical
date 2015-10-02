@@ -266,5 +266,7 @@ comprehensive_model <- lme(prop_votes ~ party * (gender + age + family_income) +
                            data = data, 
                     random = ~1|year/Geo_Code, na.action = na.exclude)
 # summary(comprehensive_model)
-(comprehensive_effects <- fixed.effects(comprehensive_model))
+comprehensive_effects <- fixed.effects(comprehensive_model)
+dplyr::data_frame(coefficient = names(comprehensive_effects), value = comprehensive_effects)
 ```
+Each of these coefficients are statistically signficant components of the model.
