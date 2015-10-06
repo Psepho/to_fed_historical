@@ -112,6 +112,8 @@ We start with a simple plot showing the proportion of votes received for the fou
 ```{r incumbents, echo=FALSE, warning=FALSE, message=FALSE, cache=TRUE}
 # Add in star candidate status
 star_status <- readr::read_csv("data/star_status.csv") %>%
+  # readxl::read_excel("data/2015 Candidates.xlsx", skip = 1)
+  # Need to reorganize candidate names to use the Excel file
   mutate(year = as.factor(year),
          candidate = as.factor(candidate))
 candidates <- dplyr::left_join(fed_votes, star_status) %>%
@@ -270,3 +272,38 @@ comprehensive_effects <- fixed.effects(comprehensive_model)
 dplyr::data_frame(coefficient = names(comprehensive_effects), value = comprehensive_effects)
 ```
 Each of these coefficients are statistically signficant components of the model.
+
+# Predictions
+
+We start with a high-level prediction for Toronto, without considering details at the census tract level.
+
+```{r toronto_prediction}
+pred_leaders <- readxl::read_excel("data/Leader likeability.xlsx", sheet = "Likeability")[1,c(2,11:13)]
+names(pred_leaders) <- c("year", "Conservative", "NDP", "Liberal")
+pred_leaders$year <- as.factor(lubridate::year(pred_leaders$year))
+pred_leaders <- tidyr::gather(pred_leaders, party, likeability, -year)
+pred_platforms <- dplyr::filter(platforms, year == 2015,
+                                topic %in% c("environment", "economy")) %>% 
+  tidyr::spread(topic, score)
+pred_candidates <- candidates %>% 
+  filter(party != "Other") %>% 
+  group_by(party) %>% 
+  summarize(star_candidate = mean(star_candidate),
+            incumbent = mean(incumbent))
+pred_demog <- demog %>% 
+  dplyr::group_by(Geo_Code) %>% 
+  dplyr::summarize(year = as.factor(2015),
+            gender = mean(gender, na.rm = TRUE),
+            age = mean(age, na.rm = TRUE),
+            family_income = mean(family_income, na.rm = TRUE))
+# pred_geo <- dplyr::data_frame(Geo_Code = unique(data$Geo_Code), year = as.factor(2015))
+pred_data <- dplyr::left_join(pred_candidates, dplyr::left_join(pred_platforms, pred_leaders))
+pred_data <- dplyr::left_join(pred_data, dplyr::left_join(pred_geo, pred_demog))
+pred <- predict(comprehensive_model, pred_data, level = 0, na.action = na.omit)
+results <- dplyr::data_frame(prop_votes = pred) %>% 
+  dplyr::bind_cols(dplyr::filter(pred_data, !is.na(family_income)))
+results %>% 
+  dplyr::group_by(party) %>% 
+  dplyr::summarise(prop_votes = mean(prop_votes))
+```
+
