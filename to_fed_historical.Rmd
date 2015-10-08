@@ -14,6 +14,8 @@ library(dplyr, quietly = TRUE)
 library(ggplot2, quietly = TRUE)
 library(nlme, quietly = TRUE)
 library(ape, quietly = TRUE)
+library(rgeos, quietly = TRUE)
+library(rgdal, quietly = TRUE)
 ```
 ```{r data, echo=FALSE, results='hide', warning=FALSE, message=FALSE, cache=TRUE}
 fed_votes_2006_geo@data$year <- 2006
@@ -277,7 +279,81 @@ Each of these coefficients are statistically signficant components of the model.
 
 We start with a high-level prediction for Toronto, without considering details at the census tract level.
 
-```{r toronto_prediction}
+```{r pred_candidates, cache=TRUE, echo=FALSE, warning=FALSE}
+pred_candidates <- readxl::read_excel("data/2015 Candidates.xlsx", skip = 1)[,c(2, 4:6)]
+names(pred_candidates) <- c("district", "party", "incumbent", "star_candidate")
+pred_candidates <- dplyr::filter(pred_candidates, party != "Green")
+# Need columns for each attribute for the spatial aggregation
+spread_star_candidate <- pred_candidates %>%
+  dplyr::select(district, party, star_candidate) %>%
+  tidyr::spread(party, star_candidate)
+spread_star_candidate$district <- as.numeric(spread_star_candidate$district)
+names(spread_star_candidate)[2:4] <- stringr::str_c(names(spread_star_candidate)[2:4], 
+                                                    "star-candidate", sep = "_")
+spread_incumbent <- pred_candidates %>%
+  dplyr::select(district, party, incumbent) %>%
+  tidyr::spread(party, incumbent)
+spread_incumbent$district <- as.numeric(spread_incumbent$district)
+names(spread_incumbent)[2:4] <- stringr::str_c(names(spread_incumbent)[2:4], "incumbent", sep = "_")
+candidate_attr <- dplyr::left_join(spread_incumbent, spread_star_candidate)
+# Shapefile -------------------------------------------------------------------
+url_2013 <- "http://ftp2.cits.rncan.gc.ca/pub/geobase/official/fed_cf/shp_eng/fed_cf_CA_2_1_shp_en.zip"
+download.file(url_2013, destfile = "data/fed_cf_CA_2_1_shp_en.zip")
+unzip("data/fed_cf_CA_2_1_shp_en.zip", exdir="data/fed_cf_CA_2_1_shp_en")
+poll_boundaries_2015 <- rgdal::readOGR(dsn = "data/fed_cf_CA_2_1_shp_en",
+                                       layer = "FED_CA_2_1_en") %>%
+  sp::spTransform(sp::CRS('+init=epsg:4326'))
+
+# Census tracts
+if(file.exists("data/gct_000b11a_e.zip")) {
+  # Nothing to do
+}  else {
+  download.file("http://www12.statcan.gc.ca/census-recensement/2011/geo/bound-limit/files-fichiers/gct_000b11a_e.zip",
+                destfile = "data/gct_000b11a_e.zip")
+  unzip("data/gct_000b11a_e.zip", exdir="data/gct")
+}
+census_tracts <- rgdal::readOGR(dsn = "data/gct", layer = "gct_000b11a_e") %>%
+  sp::spTransform(sp::CRS('+init=epsg:4326'))
+# Toronto Wards
+if(file.exists("data/subdivisions_2010.zip")) {
+  # Nothing to do
+}  else {
+  download.file("http://opendata.toronto.ca/gcc/voting_subdivision_2010_wgs84.zip",
+                destfile = "data/subdivisions_2010.zip")
+  unzip("data/subdivisions_2010.zip", exdir="data/to_wards")
+}
+wards <- rgdal::readOGR(dsn = "data/to_wards", layer = "VOTING_SUBDIVISION_2010_WGS84") %>%
+  sp::spTransform(sp::CRS('+init=epsg:4326'))
+# Subset the CTs to just those in Toronto
+to_census_tracts <- census_tracts[wards,]
+# Subset polls to just those in Toronto
+to_poll_boundaries_2015 <- poll_boundaries_2015[wards,]
+
+candidate_attr_2015 <- to_poll_boundaries_2015
+candidate_attr_2015@data <- dplyr::left_join(to_poll_boundaries_2015@data,
+                                             candidate_attr,
+                                             by = c("FEDNUM" = "district"))
+candidate_attr_2015@data <- dplyr::select(candidate_attr_2015@data, c(2, 13:18))
+candidate_attr_2015 <- aggregate(x = candidate_attr_2015, by = to_census_tracts, FUN = max, na.rm = TRUE)
+candidate_attr_2015$id <- to_census_tracts$CTUID
+pred_candidates <- candidate_attr_2015@data
+
+candidate_star <- pred_candidates[,-(1:4)]
+names(candidate_star)[1:3] <- c("Conservative", "Liberal", "NDP")
+candidate_incumbent <- pred_candidates[,c(2:4,8)]
+names(candidate_incumbent)[1:3] <- c("Conservative", "Liberal", "NDP")
+candidate_star <- tidyr::gather(candidate_star, party, star_candidate, 1:3) %>%
+  dplyr::mutate(star_candidate = ifelse(star_candidate == 1, 1, 0))
+candidate_incumbent <- tidyr::gather(candidate_incumbent, party, incumbent, 1:3) %>%
+  dplyr::mutate(incumbent = ifelse(incumbent == 1, 1, 0))
+pred_candidates <- dplyr::left_join(candidate_incumbent, candidate_star)
+names(pred_candidates)[1] <- "Geo_Code"
+district_ct <- dplyr::data_frame(district = candidate_attr_2015$FEDNUM, 
+                                 Geo_Code = candidate_attr_2015$id)
+```
+
+
+```{r toronto_prediction, echo=FALSE, warning=FALSE}
 pred_leaders <- readxl::read_excel("data/Leader likeability.xlsx", sheet = "Likeability")[1,c(2,11:13)]
 names(pred_leaders) <- c("year", "Conservative", "NDP", "Liberal")
 pred_leaders$year <- as.factor(lubridate::year(pred_leaders$year))
@@ -285,14 +361,6 @@ pred_leaders <- tidyr::gather(pred_leaders, party, likeability, -year)
 pred_platforms <- dplyr::filter(platforms, year == 2015,
                                 topic %in% c("environment", "economy")) %>% 
   tidyr::spread(topic, score)
-pred_candidates <- readxl::read_excel("data/2015 Candidates.xlsx", skip = 1)[,c(2:5)]
-names(pred_candidates) <- c("candidate", "party", "incumbent", "star_candidate")
-      %>% 
-  # candidates %>% 
-pred_candidates <- filter(pred_candidates, party != "Other") %>% 
-  group_by(party) %>% 
-  summarize(star_candidate = mean(star_candidate),
-            incumbent = mean(incumbent))
 pred_demog <- demog %>% 
   dplyr::group_by(Geo_Code) %>% 
   dplyr::summarize(year = as.factor(2015),
@@ -305,8 +373,10 @@ pred_data <- dplyr::left_join(pred_data, dplyr::left_join(pred_geo, pred_demog))
 pred <- predict(comprehensive_model, pred_data, level = 0, na.action = na.omit)
 results <- dplyr::data_frame(prop_votes = pred) %>% 
   dplyr::bind_cols(dplyr::filter(pred_data, !is.na(family_income)))
-results %>% 
-  dplyr::group_by(party) %>% 
-  dplyr::summarise(prop_votes = mean(prop_votes))
+results <- dplyr::left_join(results, district_ct)
+summary <- results %>% 
+  dplyr::group_by(district, party) %>% 
+  dplyr::summarise(prop_votes = mean(prop_votes)) %>% 
+  dplyr::filter(min_rank(desc(prop_votes)) < 2)
+summary
 ```
-
