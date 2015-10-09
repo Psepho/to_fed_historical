@@ -269,8 +269,9 @@ comprehensive_model <- lme(prop_votes ~ party * (gender + age + family_income) +
                              likeability + star_candidate*incumbent, 
                            data = data, 
                     random = ~1|year/Geo_Code, na.action = na.exclude)
-# summary(comprehensive_model)
+summary(comprehensive_model)
 comprehensive_effects <- fixed.effects(comprehensive_model)
+no_year <- update(comprehensive_model, random = ~1|Geo_Code)
 dplyr::data_frame(coefficient = names(comprehensive_effects), value = comprehensive_effects)
 ```
 Each of these coefficients are statistically signficant components of the model.
@@ -370,13 +371,32 @@ pred_demog <- demog %>%
 # pred_geo <- dplyr::data_frame(Geo_Code = unique(data$Geo_Code), year = as.factor(2015))
 pred_data <- dplyr::left_join(pred_candidates, dplyr::left_join(pred_platforms, pred_leaders))
 pred_data <- dplyr::left_join(pred_data, dplyr::left_join(pred_geo, pred_demog))
-pred <- predict(comprehensive_model, pred_data, level = 0, na.action = na.omit)
+pred <- predict(no_year, pred_data, level = 0, na.action = na.omit)
 results <- dplyr::data_frame(prop_votes = pred) %>% 
   dplyr::bind_cols(dplyr::filter(pred_data, !is.na(family_income)))
 results <- dplyr::left_join(results, district_ct)
+extra_ridings <- c("35055", "35059", "35061", "35111", "35062")
 summary <- results %>% 
   dplyr::group_by(district, party) %>% 
   dplyr::summarise(prop_votes = mean(prop_votes)) %>% 
-  dplyr::filter(min_rank(desc(prop_votes)) < 2)
+  dplyr::filter(min_rank(desc(prop_votes)) < 2,
+                !(district %in% extra_ridings))
 summary
+```
+```{r prediction_plot, echo=FALSE}
+geo <- ggplot2::fortify(to_poll_boundaries_2015, region = "FEDNUM")
+map_results <- results %>% 
+  dplyr::group_by(district, party) %>% 
+  dplyr::summarize(prop_votes = mean(prop_votes))
+ggplot(map_results, aes(map_id = district)) +
+  geom_map(aes(fill = cut_interval(prop_votes, length = 0.15)), map = geo) +
+  scale_fill_brewer("Proportion of votes", 
+                    labels = c("Low", rep("", 4), "High"), 
+                    type = "seq", palette = "YlOrBr") +
+  labs(x = "", y = "", title = paste0(year, " Predictions for the 2015 Federal General Election")) +
+  theme(axis.ticks.y = element_blank(), axis.text.y = element_blank(), # get rid of x ticks/text
+        axis.ticks.x = element_blank(), axis.text.x = element_blank(), # get rid of y ticks/text
+        plot.title = element_text(lineheight=.8, face="bold", vjust=1)) + # make title bold and add space
+  expand_limits(x = geo$long, y = geo$lat) +
+  facet_wrap(~party, as.table = FALSE)
 ```
