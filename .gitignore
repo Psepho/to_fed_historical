@@ -4,3 +4,8 @@
 *_cache
 *.html
 *_files
+*.xlsx
+data/fed*
+data/gct*
+data/sub*
+data/to_wards
