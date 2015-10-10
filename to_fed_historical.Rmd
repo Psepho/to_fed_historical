@@ -16,6 +16,7 @@ library(nlme, quietly = TRUE)
 library(ape, quietly = TRUE)
 library(rgeos, quietly = TRUE)
 library(rgdal, quietly = TRUE)
+library(raster, quietly = TRUE)
 ```
 ```{r data, echo=FALSE, results='hide', warning=FALSE, message=FALSE, cache=TRUE}
 fed_votes_2006_geo@data$year <- 2006
@@ -297,14 +298,18 @@ spread_incumbent <- pred_candidates %>%
 spread_incumbent$district <- as.numeric(spread_incumbent$district)
 names(spread_incumbent)[2:4] <- stringr::str_c(names(spread_incumbent)[2:4], "incumbent", sep = "_")
 candidate_attr <- dplyr::left_join(spread_incumbent, spread_star_candidate)
-# Shapefile -------------------------------------------------------------------
-url_2013 <- "http://ftp2.cits.rncan.gc.ca/pub/geobase/official/fed_cf/shp_eng/fed_cf_CA_2_1_shp_en.zip"
-download.file(url_2013, destfile = "data/fed_cf_CA_2_1_shp_en.zip")
-unzip("data/fed_cf_CA_2_1_shp_en.zip", exdir="data/fed_cf_CA_2_1_shp_en")
+# Shapefiles -------------------------------------------------------------------
+# Electoral boundaries
+if(file.exists("data/fed_cf_CA_2_1_shp_en.zip")) {
+  # Nothing to do
+}  else {
+  url_2013 <- "http://ftp2.cits.rncan.gc.ca/pub/geobase/official/fed_cf/shp_eng/fed_cf_CA_2_1_shp_en.zip"
+  download.file(url_2013, destfile = "data/fed_cf_CA_2_1_shp_en.zip")
+  unzip("data/fed_cf_CA_2_1_shp_en.zip", exdir="data/fed_cf_CA_2_1_shp_en")
+}
 poll_boundaries_2015 <- rgdal::readOGR(dsn = "data/fed_cf_CA_2_1_shp_en",
                                        layer = "FED_CA_2_1_en") %>%
   sp::spTransform(sp::CRS('+init=epsg:4326'))
-
 # Census tracts
 if(file.exists("data/gct_000b11a_e.zip")) {
   # Nothing to do
@@ -329,7 +334,8 @@ wards <- rgdal::readOGR(dsn = "data/to_wards", layer = "VOTING_SUBDIVISION_2010_
 to_census_tracts <- census_tracts[wards,]
 # Subset polls to just those in Toronto
 to_poll_boundaries_2015 <- poll_boundaries_2015[wards,]
-
+# to_poll_boundaries_2015 <- crop(to_poll_boundaries_2015, extent(-79.7, -78.5, 43.6, 43.9))
+to_poll_boundaries_2015 <- crop(to_poll_boundaries_2015, extent(-79.7, -78.5, 43.47491, 43.9))
 candidate_attr_2015 <- to_poll_boundaries_2015
 candidate_attr_2015@data <- dplyr::left_join(to_poll_boundaries_2015@data,
                                              candidate_attr,
@@ -372,15 +378,21 @@ pred_data <- dplyr::left_join(pred_candidates, dplyr::left_join(pred_platforms, 
 pred_data <- dplyr::left_join(pred_data, dplyr::left_join(pred_geo, pred_demog))
 pred <- predict(no_year, pred_data, level = 0, na.action = na.omit)
 results <- dplyr::data_frame(prop_votes = pred) %>% 
-  dplyr::bind_cols(dplyr::filter(pred_data, !is.na(family_income)))
+  dplyr::bind_cols(dplyr::filter(pred_data, 
+                                 !is.na(family_income),
+                                 !is.na(incumbent)))
 results <- dplyr::left_join(results, district_ct)
 extra_ridings <- c("35055", "35059", "35061", "35111", "35062")
+results <- dplyr::filter(results, !(district %in% extra_ridings))
 summary <- results %>% 
   dplyr::group_by(district, party) %>% 
   dplyr::summarise(prop_votes = mean(prop_votes)) %>% 
-  dplyr::filter(min_rank(desc(prop_votes)) < 2,
-                !(district %in% extra_ridings))
+  dplyr::filter(min_rank(desc(prop_votes)) < 2)
 summary
+results %>% 
+  dplyr::group_by(district, party) %>% 
+  dplyr::summarise(prop_votes = mean(prop_votes)) %>% 
+  readr::write_csv("2015_predictions_federal.csv")
 ```
 ```{r prediction_plot, echo=FALSE}
 geo <- ggplot2::fortify(to_poll_boundaries_2015, region = "FEDNUM")
@@ -388,9 +400,9 @@ map_results <- results %>%
   dplyr::group_by(district, party) %>% 
   dplyr::summarize(prop_votes = mean(prop_votes))
 ggplot(map_results, aes(map_id = district)) +
-  geom_map(aes(fill = cut_interval(prop_votes, length = 0.15)), map = geo) +
+  geom_map(aes(fill = cut_interval(prop_votes, length = 0.1)), map = geo) +
   scale_fill_brewer("Proportion of votes", 
-                    labels = c("Low", rep("", 4), "High"), 
+                    labels = c("Low", rep("", 3), "High"), 
                     type = "seq", palette = "YlOrBr") +
   labs(x = "", y = "", title = "Predictions for the 2015 Federal General Election") +
   theme(axis.ticks.y = element_blank(), axis.text.y = element_blank(), # get rid of x ticks/text
