@@ -387,8 +387,9 @@ results <- dplyr::filter(results, !(district %in% extra_ridings))
 summary <- results %>% 
   dplyr::group_by(district, party) %>% 
   dplyr::summarise(prop_votes = mean(prop_votes)) %>% 
-  dplyr::filter(min_rank(desc(prop_votes)) < 2)
-summary
+  dplyr::filter(min_rank(desc(prop_votes)) < 2) %>% 
+  dplyr::select(district, party) %>% 
+  readr::write_csv("2015_riding_predictions_federal.csv")
 results %>% 
   dplyr::group_by(district, party) %>% 
   dplyr::summarise(prop_votes = mean(prop_votes)) %>% 
