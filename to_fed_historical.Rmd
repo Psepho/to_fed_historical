@@ -137,7 +137,8 @@ ggplot(data, aes(x = factor(incumbent), y = prop_votes, fill = factor(star_candi
   scale_fill_brewer(palette = 7) +
   scale_x_discrete("Incumbent") +
   scale_y_continuous("Proportion of votes") +
-  guides(fill = guide_legend(title = "Star candidate"))
+  guides(fill = guide_legend(title = "Star candidate")) +
+  facet_wrap(~year)
 ```
 
 A mixed-effects model of these data show that being either a star candidate or an incumbent can boost a candidates share of the vote by `r round(mean(candidate.effects["star_candidateTRUE"], candidate.effects["incumbentTRUE"]), 2)*100`%. But, as is clear in the figure above, being both an incumbent and a star candidate does not give a candidate an incremental increase. In other words, the effects are not additive, as evidenced by the statistically significant interaction between the two effects.
@@ -278,6 +279,11 @@ comprehensive_effects <- fixed.effects(comprehensive_model)
 no_year <- update(comprehensive_model, random = ~1|Geo_Code)
 no_demog <- update(no_year, fixed = . ~ party + (economy + environment) +
                              likeability + star_candidate*incumbent)
+incumbent_decay <- lme(prop_votes ~ party * (gender + age + family_income) +
+                             (economy + environment) +
+                             likeability + star_candidate*incumbent*as.numeric(year), 
+                           data = data, 
+                    random = ~1|Geo_Code, na.action = na.exclude)
 dplyr::data_frame(coefficient = names(comprehensive_effects), value = comprehensive_effects)
 ```
 Each of these coefficients are statistically signficant components of the model.
