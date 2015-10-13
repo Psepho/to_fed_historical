@@ -129,6 +129,9 @@ data <- dplyr::left_join(candidates, votes)
 candidate_model <- lme(prop_votes ~ party + star_candidate*incumbent, data = data, 
                     random = ~1|year/district, na.action = na.exclude)
 candidate.effects <- fixed.effects(candidate_model)
+candidate_model_year <- lme(prop_votes ~ party + star_candidate*incumbent*as.numeric(year), 
+                            data = data,
+                            random = ~1|district, na.action = na.exclude)
 ggplot(data, aes(x = factor(incumbent), y = prop_votes, fill = factor(star_candidate))) + 
   geom_boxplot() +
   scale_fill_brewer(palette = 7) +
@@ -273,6 +276,8 @@ comprehensive_model <- lme(prop_votes ~ party * (gender + age + family_income) +
 summary(comprehensive_model)
 comprehensive_effects <- fixed.effects(comprehensive_model)
 no_year <- update(comprehensive_model, random = ~1|Geo_Code)
+no_demog <- update(no_year, fixed = . ~ party + (economy + environment) +
+                             likeability + star_candidate*incumbent)
 dplyr::data_frame(coefficient = names(comprehensive_effects), value = comprehensive_effects)
 ```
 Each of these coefficients are statistically signficant components of the model.
@@ -401,7 +406,7 @@ summary <- results %>%
 results %>% 
   dplyr::group_by(district, party) %>% 
   dplyr::summarise(prop_votes = mean(prop_votes)) %>% 
-  tidyr::spread(party, prop_votes) %>% 
+  # tidyr::spread(party, prop_votes) %>% 
   readr::write_csv("2015_predictions_federal.csv")
 ```
 ```{r prediction_plot, echo=FALSE}
@@ -420,4 +425,18 @@ ggplot(map_results, aes(map_id = district)) +
         plot.title = element_text(lineheight=.8, face="bold", vjust=1)) + # make title bold and add space
   expand_limits(x = geo$long, y = geo$lat) +
   facet_wrap(~party, as.table = FALSE)
+```
+
+```{r pred_no_demog}
+pred_no_demog <- predict(no_demog, pred_data, level = 0, na.action = na.omit) 
+results_no_demog <- dplyr::data_frame(prop_votes = pred_no_demog) %>% 
+  dplyr::bind_cols(pred_data)
+results_no_demog <- dplyr::left_join(results_no_demog, district_ct)
+extra_ridings <- c("35055", "35059", "35061", "35111", "35062")
+results_no_demog <- dplyr::filter(results_no_demog, !(district %in% extra_ridings))
+results_no_demog %>% 
+  dplyr::group_by(district, party) %>% 
+  dplyr::summarise(prop_votes = mean(prop_votes)) %>% 
+  # tidyr::spread(party, prop_votes) %>% 
+  readr::write_csv("2015_predictions_federal_no_demog.csv")
 ```
